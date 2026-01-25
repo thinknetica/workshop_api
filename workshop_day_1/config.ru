@@ -29,5 +29,5 @@ use Gateway::HealthEndpoint, health_checker: health_checker
 use Gateway::Middleware::RequestTransformer
 use Gateway::Middleware::ResponseTransformer
 use Gateway::Router, health_checker: health_checker, load_balancer: load_balancer
-use Gateway::Middleware::CircuitBreaker
+# use Gateway::Middleware::CircuitBreaker
 run Gateway::Proxy.new
