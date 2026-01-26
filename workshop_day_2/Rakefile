@@ -1,0 +1,35 @@
+require 'rspec/core/rake_task'
+
+RSpec::Core::RakeTask.new(:spec)
+
+task default: :spec
+
+desc "Запустить сервер"
+task :server do
+  exec "bundle exec rackup -p 9292"
+end
+
+desc "Запустить демо"
+task :demo do
+  exec "ruby scripts/demo.rb all"
+end
+
+desc "Запустить Redis через Docker"
+task :redis do
+  exec "docker-compose up -d redis"
+end
+
+desc "Остановить Redis"
+task :redis_stop do
+  exec "docker-compose down"
+end
+
+desc "Очистить Redis"
+task :redis_flush do
+  require 'redis'
+  require 'dotenv/load'
+
+  redis = Redis.new(url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0'))
+  redis.flushdb
+  puts "✅ Redis очищен"
+end
