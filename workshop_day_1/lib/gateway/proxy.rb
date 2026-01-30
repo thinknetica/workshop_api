@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'faraday'
 require 'oj'
 
@@ -23,7 +25,7 @@ module Gateway
       response.headers.each do |key, value|
         headers[key.downcase] = value
       end
-      headers.delete('transfer-encoding')  # Rack сам управляет
+      headers.delete('transfer-encoding') # Rack сам управляет
 
       [response.status, headers, [response.body || '']]
     rescue Faraday::Error => e
@@ -53,6 +55,7 @@ module Gateway
 
     def request_body(env)
       return nil unless %w[POST PUT PATCH].include?(env['REQUEST_METHOD'])
+
       env['rack.input'].read.tap { env['rack.input'].rewind }
     end
 
@@ -85,11 +88,22 @@ module Gateway
         [504, { 'content-type' => 'application/json' },
          ['{"error": "gateway_timeout", "message": "Backend did not respond in time"}']]
       when Faraday::ConnectionFailed
-        [502, { 'content-type' => 'application/json' },
-         ['{"error": "bad_gateway", "message": "Could not connect to backend"}']]
+        case error.cause
+        when Net::CircuitOpenError
+          [503, { 'content-type' => 'application/json' },
+           ['{"error": "service_unavailable", "message": "Circuit breaker is open"}']]
+
+        when Errno::ECONNREFUSED
+          [502, { 'content-type' => 'application/json' },
+           ['{"error": "bad_gateway", "message": "Connection refused"}']]
+
+        else
+          [502, { 'content-type' => 'application/json' },
+           ['{"error": "bad_gateway", "message": "Connection failed"}']]
+        end
       else
         [500, { 'content-type' => 'application/json' },
-         [%Q({"error": "internal_error", "message": "#{error.message}"})]]
+         [%({"error": "internal_error", "message": "#{error.message}"})]]
       end
     end
   end
