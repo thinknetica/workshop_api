@@ -18,20 +18,32 @@ module Middleware
 
       begin
         payload = @jwt_service.verify_access_token(token)
+        user = User.find(payload['user_id'])
+        scopes = payload['scopes']
+        required_scope = map_request_to_scope(path, request.method)
+        @jwt_service.check_token_scopes(scopes: scopes, required_scope: required_scope, user: user)
 
         # Добавляем данные пользователя в env
         env['api.user_id'] = payload['user_id']
-        env['api.scopes'] = payload['scopes'] || []
+        env['api.scopes'] = scopes || []
 
         @app.call(env)
       rescue Auth::JwtService::ExpiredTokenError
         unauthorized('Token has expired', error_code: 'token_expired')
       rescue Auth::JwtService::InvalidTokenError => e
         unauthorized(e.message, error_code: 'invalid_token')
+      rescue Auth::JwtService::InvalidTokenScopesError
+        forbidden(error_code: 'insufficient_scope', user_scopes: scopes, required_scope: required_scope)
       end
     end
 
     private
+
+    def map_request_to_scope(path, method)
+      scope = %w[post put patch].include?(method) ? 'write' : 'read'
+      resource = path[/\/api\/([^\/]+)/, 1]
+      "#{scope}:#{resource}"
+    end
 
     def excluded?(path)
       @exclude_paths.any? { |pattern| path.start_with?(pattern) }
@@ -57,6 +69,16 @@ module Middleware
           'WWW-Authenticate' => 'Bearer realm="API"'
         },
         [{ error: error_code, message: message }.to_json]
+      ]
+    end
+
+    def forbidden(error_code: 'insufficient_scope', user_scopes:, required_scope:)
+      [
+        403,
+        {
+          'Content-Type' => 'application/json'
+        },
+        [{ error: error_code, required: required_scope, your_scopes: user_scopes}.to_json]
       ]
     end
   end

@@ -5,6 +5,7 @@ module Auth
   class JwtService
     class InvalidTokenError < StandardError; end
     class ExpiredTokenError < StandardError; end
+    class InvalidTokenScopesError < StandardError; end
 
     ACCESS_TOKEN_TTL = 15 * 60  # 15 минут
     REFRESH_TOKEN_TTL = 30 * 24 * 60 * 60  # 30 дней
@@ -56,6 +57,13 @@ module Auth
       raise ExpiredTokenError, 'Access token has expired'
     rescue JWT::DecodeError => e
       raise InvalidTokenError, "Invalid token: #{e.message}"
+    end
+
+    def check_token_scopes(required_scope:, scopes:, user:)
+      raise InvalidTokenError, 'User not found' unless user
+      return if scopes.include?(required_scope)
+
+      raise InvalidTokenScopesError
     end
 
     # Обновление токенов через refresh token
