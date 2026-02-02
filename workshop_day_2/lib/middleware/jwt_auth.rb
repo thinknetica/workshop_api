@@ -1,3 +1,5 @@
+require 'pry'
+
 module Middleware
   class JwtAuth
     def initialize(app, jwt_service:, exclude_paths: [])
@@ -11,16 +13,16 @@ module Middleware
       path = request.path
 
       # Пропускаем публичные endpoints
-      return @app.call(env) if excluded?(path)
+      return @app.call(env) if excluded?(path) || env['HTTP_X_API_KEY']
 
       token = extract_token(env)
-      return unauthorized('Missing authorization header') unless token
+      return unauthorized('Missing authorization header') if token.nil? || token.empty?
 
       begin
         payload = @jwt_service.verify_access_token(token)
         user = User.find(payload['user_id'])
         scopes = payload['scopes']
-        required_scope = map_request_to_scope(path, request.method)
+        required_scope = map_request_to_scope(path, request.request_method)
         @jwt_service.check_token_scopes(scopes: scopes, required_scope: required_scope, user: user)
 
         # Добавляем данные пользователя в env
@@ -40,7 +42,7 @@ module Middleware
     private
 
     def map_request_to_scope(path, method)
-      scope = %w[post put patch].include?(method) ? 'write' : 'read'
+      scope = %w[post put patch].include?(method.downcase) ? 'write' : 'read'
       resource = path[/\/api\/([^\/]+)/, 1]
       "#{scope}:#{resource}"
     end

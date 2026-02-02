@@ -149,7 +149,7 @@ def demo_api_key_rotation
   response = client.post('/api/keys/rotate/3')
   print_response("3. Ротация ключа (grace period начался)", response)
 
-  second_key = response[:body]['rotation']['new_key']['raw_key']
+  second_key = response[:body].dig('rotation', 'new_key', 'raw_key')
 
   sleep 1
 

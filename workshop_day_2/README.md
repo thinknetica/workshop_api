@@ -201,7 +201,7 @@ curl -X POST http://localhost:9292/api/keys/generate \
 
 # Использование ключа
 curl http://localhost:9292/api/orders \
-  -H "X-API-Key: sk_live_xxxxxxxxxxx"
+  -H "AUTHORIZATION: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjozLCJ0eXBlIjoiYWNjZXNzIiwic2NvcGVzIjpbInJlYWQiLCJ3cml0ZSIsImFkbWluIiwicmVhZDpvcmRlcnMiXSwiZXhwIjoxNzY5OTc1MjAwLCJpYXQiOjE3Njk5NzQzMDB9.iZi-C_EF4WGerMfrI_aRFmEfW1kfPq40keJ3oNGlwi4"
 ```
 
 ### 3. Rate Limiting

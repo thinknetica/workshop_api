@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_relative '../spec_helper'
 require_relative '../../lib/models'
 require_relative '../../lib/auth/jwt_service'
@@ -13,7 +15,7 @@ RSpec.describe Auth::JwtService do
     User.create!(
       email: 'test@example.com',
       password_hash: 'hash',
-      scopes: ['read', 'write'],
+      scopes: %w[read write],
       tier: 'free'
     )
   end
@@ -33,7 +35,7 @@ RSpec.describe Auth::JwtService do
 
       expect(payload['user_id']).to eq(user.id)
       expect(payload['type']).to eq('access')
-      expect(payload['scopes']).to eq(['read', 'write'])
+      expect(payload['scopes']).to eq(%w[read write])
     end
 
     it 'refresh token содержит jti' do
@@ -61,26 +63,26 @@ RSpec.describe Auth::JwtService do
       payload = service.verify_access_token(tokens[:access_token])
 
       expect(payload['user_id']).to eq(user.id)
-      expect(payload['scopes']).to eq(['read', 'write'])
+      expect(payload['scopes']).to eq(%w[read write])
     end
 
     it 'выбрасывает ошибку для невалидного токена' do
-      expect {
+      expect do
         service.verify_access_token('invalid_token')
-      }.to raise_error(Auth::JwtService::InvalidTokenError)
+      end.to raise_error(Auth::JwtService::InvalidTokenError)
     end
 
     it 'выбрасывает ошибку для истёкшего токена' do
       # Создаём токен с exp в прошлом
       expired_token = JWT.encode({
-        user_id: user.id,
-        type: 'access',
-        exp: Time.now.to_i - 3600
-      }, access_secret, 'HS256')
+                                   user_id: user.id,
+                                   type: 'access',
+                                   exp: Time.now.to_i - 3600
+                                 }, access_secret, 'HS256')
 
-      expect {
+      expect do
         service.verify_access_token(expired_token)
-      }.to raise_error(Auth::JwtService::ExpiredTokenError)
+      end.to raise_error(Auth::JwtService::ExpiredTokenError)
     end
 
     it 'отклоняет refresh token' do
@@ -88,16 +90,16 @@ RSpec.describe Auth::JwtService do
 
       # Refresh token подписан другим секретом, поэтому будет ошибка декодирования
       # Это корректное поведение - разные секреты для разных типов токенов
-      expect {
+      expect do
         service.verify_access_token(tokens[:refresh_token])
-      }.to raise_error(Auth::JwtService::InvalidTokenError)
+      end.to raise_error(Auth::JwtService::InvalidTokenError)
     end
   end
 
   describe '#refresh' do
     it 'выдаёт новую пару токенов' do
       tokens = service.generate_tokens(user)
-      sleep 1  # Чтобы timestamp отличался
+      sleep 1 # Чтобы timestamp отличался
       new_tokens = service.refresh(tokens[:refresh_token])
 
       # Проверяем что это действительно новые токены
@@ -118,9 +120,9 @@ RSpec.describe Auth::JwtService do
       service.refresh(old_refresh)
 
       # Пытаемся использовать второй раз
-      expect {
+      expect do
         service.refresh(old_refresh)
-      }.to raise_error(Auth::JwtService::InvalidTokenError, /revoked/)
+      end.to raise_error(Auth::JwtService::InvalidTokenError, /revoked/)
     end
 
     it 'отзывает все токены при попытке reuse старого токена' do
@@ -131,14 +133,14 @@ RSpec.describe Auth::JwtService do
       new_tokens = service.refresh(old_refresh)
 
       # Пытаемся использовать старый токен - должен отозвать ВСЕ
-      expect {
+      expect do
         service.refresh(old_refresh)
-      }.to raise_error(Auth::JwtService::InvalidTokenError)
+      end.to raise_error(Auth::JwtService::InvalidTokenError)
 
       # Новый токен тоже должен быть инвалидирован
-      expect {
+      expect do
         service.refresh(new_tokens[:refresh_token])
-      }.to raise_error(Auth::JwtService::InvalidTokenError)
+      end.to raise_error(Auth::JwtService::InvalidTokenError)
     end
 
     it 'выбрасывает ошибку для access token' do
@@ -146,9 +148,9 @@ RSpec.describe Auth::JwtService do
 
       # Access token подписан другим секретом, поэтому будет ошибка декодирования
       # Это корректное поведение - разные секреты для разных типов токенов
-      expect {
+      expect do
         service.refresh(tokens[:access_token])
-      }.to raise_error(Auth::JwtService::InvalidTokenError)
+      end.to raise_error(Auth::JwtService::InvalidTokenError)
     end
   end
 
@@ -182,13 +184,65 @@ RSpec.describe Auth::JwtService do
       expect(redis.sismember("user_refresh_tokens:#{user.id}", jti3)).to be false
 
       # Попытка использовать отозванные токены должна провалиться
-      expect {
+      expect do
         service.refresh(tokens1[:refresh_token])
-      }.to raise_error(Auth::JwtService::InvalidTokenError, /revoked/)
+      end.to raise_error(Auth::JwtService::InvalidTokenError, /revoked/)
 
       # Генерируем новый токен после отзыва - он должен работать
       tokens_new = service.generate_tokens(user)
       expect { service.refresh(tokens_new[:refresh_token]) }.not_to raise_error
+    end
+  end
+
+  describe '#check_token_scopes' do
+    it 'успешно проходит, если required scope присутствует в scopes' do
+      expect do
+        service.check_token_scopes(required_scope: 'read', scopes: %w[read write], user: user)
+      end.not_to raise_error
+    end
+
+    it 'успешно проходит для любого из доступных scopes' do
+      expect do
+        service.check_token_scopes(required_scope: 'write', scopes: %w[read write], user: user)
+      end.not_to raise_error
+    end
+
+    it 'выбрасывает InvalidTokenError, если user равен nil' do
+      expect do
+        service.check_token_scopes(required_scope: 'read', scopes: %w[read write], user: nil)
+      end.to raise_error(Auth::JwtService::InvalidTokenError, 'User not found')
+    end
+
+    it 'выбрасывает InvalidTokenScopesError, если required scope отсутствует в scopes' do
+      expect do
+        service.check_token_scopes(required_scope: 'admin', scopes: %w[read write], user: user)
+      end.to raise_error(Auth::JwtService::InvalidTokenScopesError)
+    end
+
+    it 'выбрасывает InvalidTokenScopesError, если scopes пустой массив' do
+      expect do
+        service.check_token_scopes(required_scope: 'read', scopes: [], user: user)
+      end.to raise_error(Auth::JwtService::InvalidTokenScopesError)
+    end
+
+    context 'с токеном пользователя' do
+      it 'проверяет scopes из сгенерированного токена' do
+        tokens = service.generate_tokens(user)
+        payload = service.verify_access_token(tokens[:access_token])
+
+        expect do
+          service.check_token_scopes(required_scope: 'read', scopes: payload['scopes'], user: user)
+        end.not_to raise_error
+      end
+
+      it 'отклоняет scope, которого нет у пользователя' do
+        tokens = service.generate_tokens(user)
+        payload = service.verify_access_token(tokens[:access_token])
+
+        expect do
+          service.check_token_scopes(required_scope: 'delete', scopes: payload['scopes'], user: user)
+        end.to raise_error(Auth::JwtService::InvalidTokenScopesError)
+      end
     end
   end
 end
