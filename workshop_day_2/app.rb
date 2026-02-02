@@ -104,6 +104,10 @@ class ApiGatewayApp < Sinatra::Base
       @current_user ||= User.find(current_user_id) if current_user_id
     end
 
+    def client
+      @current_client || current_user 
+    end
+
     def json_params
       @json_params ||= begin
         request.body.rewind
@@ -296,7 +300,7 @@ class ApiGatewayApp < Sinatra::Base
 
     json(
       client_id: client.id,
-      client_name: client.name,
+      name: client.respond_to?(:name) ? client.name : client.email,
       tier: client.tier,
       api_keys: keys
     )
@@ -319,9 +323,9 @@ class ApiGatewayApp < Sinatra::Base
 
     json(
       client: {
-        id: @current_client.id,
-        name: @current_client.name,
-        tier: @current_client.tier
+        id: client.id,
+        name: client.respond_to?(:name) ? client.name : client.email,
+        tier: client.tier
       },
       orders: orders
     )
